@@ -7,7 +7,8 @@ export const initializeGroq = async (modelName) => {
     groqModel = new ChatGroq({
       apiKey: process.env.REACT_APP_GROQ_API_KEY,
       model: modelName,
-      temperature: 0.7
+      temperature: 0.3,
+      toolChoice: "auto"
     });
   }
   return groqModel;
