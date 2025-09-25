@@ -16,7 +16,7 @@ import NodeSidebar from './components/NodeSidebar.js';
 import NodeConfigPanel from './components/NodeConfigPanel.js';
 import ErrorBoundary from './components/ErrorBoundary.js';
 import { isValidConnection, getConnectionMessage } from './utils/connectionValidation.js';
-import { initializellm, processMessage } from './LLM/llm.js';
+import { callAgentAPI } from './services/groqService.js';
 
 // Suppress ResizeObserver errors - these are harmless but annoying
 const debounce = (func, wait) => {
@@ -156,7 +156,7 @@ function Flow() {
           if (sourceNode?.type === 'llm' && targetNode?.type === 'agent' && edge.targetHandle === 'model') {
             console.log("🔌 Disconnecting LLM from agent:", targetNode.id);
             
-            // Clean up agent data - remove groqModel and reset status
+            // Clean up agent data - reset status
             setNodes((nds) =>
               nds.map((node) =>
                 node.id === targetNode.id
@@ -164,7 +164,6 @@ function Flow() {
                       ...node,
                       data: {
                         ...node.data,
-                        groqModel: null,
                         model: '',
                         initialized: false,
                         initializing: false,
@@ -224,6 +223,23 @@ function Flow() {
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === 'Delete' || event.key === 'Backspace') {
+        // Don't delete nodes when user is typing in an input field
+        const activeElement = document.activeElement;
+        const isTyping = activeElement && (
+          activeElement.tagName === 'INPUT' ||
+          activeElement.tagName === 'TEXTAREA' ||
+          activeElement.contentEditable === 'true' ||
+          activeElement.isContentEditable ||
+          activeElement.closest('.config-panel') ||
+          activeElement.closest('.chat-input-container-mini') ||
+          activeElement.closest('input') ||
+          activeElement.closest('textarea')
+        );
+        
+        if (isTyping) {
+          return; // Let the input field handle the backspace/delete
+        }
+        
         event.preventDefault();
         
         if (selectedEdge) {
@@ -234,7 +250,7 @@ function Flow() {
           if (sourceNode?.type === 'llm' && targetNode?.type === 'agent' && selectedEdge.targetHandle === 'model') {
             console.log("🔌 Disconnecting LLM from agent via keyboard:", targetNode.id);
             
-            // Clean up agent data - remove groqModel and reset status
+            // Clean up agent data - reset status
             setNodes((nds) =>
               nds.map((node) =>
                 node.id === targetNode.id
@@ -242,7 +258,6 @@ function Flow() {
                       ...node,
                       data: {
                         ...node.data,
-                        groqModel: null,
                         model: '',
                         initialized: false,
                         initializing: false,
@@ -303,6 +318,12 @@ function Flow() {
           // Initialize the agent with the connected LLM model
           try {
             const selectedModel = sourceNode.data?.model || sourceNode.data?.label || 'llama3-8b-8192';
+            const llmApiKey = sourceNode.data?.apiKey;
+            
+            // Check if LLM node has API key configured
+            if (!llmApiKey) {
+              showMessage('Warning: LLM node has no API key configured. Please add an API key in the LLM node settings.', 'warning', 5000);
+            }
             
             // Set agent to initializing state
             setNodes((nds) => 
@@ -321,10 +342,7 @@ function Flow() {
               )
             );
             
-            // Initialize the agent with the specific model
-            const groqModel = await initializellm(selectedModel);
-            
-            // Update agent state to show successful initialization
+            // Set agent as initialized (no need for client-side LLM initialization since we use callAgentAPI)
             setNodes((nds) => 
               nds.map((node) => 
                 node.id === params.target 
@@ -334,8 +352,7 @@ function Flow() {
                         ...node.data, 
                         initializing: false,
                         initialized: true,
-                        status: 'Agent ready',
-                        groqModel: groqModel
+                        status: 'Agent ready'
                       } 
                     }
                   : node
@@ -383,7 +400,12 @@ function Flow() {
   const onNodeClick = useCallback((event, node) => {
     setSelectedNode(node);
     setSelectedEdge(null);
-    setShowConfigPanel(true);
+    // Don't show config panel for chat nodes, output nodes, and tool nodes
+    if (node.type !== 'chat' && node.type !== 'output' && node.type !== 'tool') {
+      setShowConfigPanel(true);
+    } else {
+      setShowConfigPanel(false);
+    }
   }, []);
 
   const onEdgeClick = useCallback((event, edge) => {
@@ -447,27 +469,87 @@ function Flow() {
       if (targetNode && targetNode.type === 'agent') {
         totalAgents++;
         
-        // Set agent to processing state
+        // Set agent to processing state and also connected LLM nodes
+        const connectedLLMNodes = edges
+          .filter(edge => edge.target === targetNodeId && edge.targetHandle === 'model')
+          .map(edge => edge.source);
+        
         setNodes((nds) => 
-          nds.map((node) => 
-            node.id === targetNodeId 
-              ? { ...node, data: { ...node.data, processing: true, lastMessage: message } }
-              : node
-          )
+          nds.map((node) => {
+            if (node.id === targetNodeId) {
+              // Set agent to processing
+              return { ...node, data: { ...node.data, processing: true, lastMessage: message } };
+            } else if (connectedLLMNodes.includes(node.id) && node.type === 'llm') {
+              // Set connected LLM to processing
+              return { ...node, data: { ...node.data, processing: true } };
+            }
+            return node;
+          })
         );
 
         try {
           // Check if agent has a connected LLM model and is properly initialized
-          if (targetNode.data?.groqModel && targetNode.data?.initialized) {
+          if (targetNode.data?.initialized && targetNode.data?.model) {
             console.log("🤖 Processing message through agent:", targetNodeId);
             
-            // Process message through LLM
-            const result = await processMessage(message, "You are a helpful AI assistant. Respond concisely and helpfully.");
+            // Find the connected LLM node to get the actual selected model
+            const connectedLLMEdge = edges.find(edge => 
+              edge.target === targetNodeId && edge.targetHandle === 'model'
+            );
+            const connectedLLMNode = connectedLLMEdge ? 
+              nodes.find(node => node.id === connectedLLMEdge.source) : null;
             
-            if (result.success) {
+            // Get agent configuration - use the LLM node's selected model if available
+            const agentModel = connectedLLMNode?.data?.model || 
+                              connectedLLMNode?.data?.selectedModel || 
+                              targetNode.data?.model || 
+                              'llama3-8b-8192';
+            const temperature = targetNode.data?.temperature || 0.2;
+            // Get agent provider from the connected LLM node, fallback to targetNode, then default to 'groq'
+            const agent = connectedLLMNode?.data?.agent || 
+                         targetNode.data?.agent || 
+                         'groq';
+            
+            // Get API key from the connected LLM node
+            const apiKey = connectedLLMNode?.data?.apiKey || 
+                          targetNode.data?.apiKey || 
+                          process.env.REACT_APP_GROQ_API_KEY;
+            
+            // Find connected tools for this agent
+            const connectedToolEdges = edges.filter(edge => 
+              edge.target === targetNodeId && edge.targetHandle === 'tool'
+            );
+            const connectedTools = connectedToolEdges
+              .map(edge => nodes.find(node => node.id === edge.source))
+              .filter(node => node && node.type === 'tool')
+              .map(toolNode => toolNode.data?.label || 'Unknown Tool');
+            
+            console.log("🔍 Using model from LLM node:", agentModel);
+            console.log("🤖 Using agent provider:", agent);
+            console.log("🛠️ Connected tools for agent:", connectedTools);
+            console.log("🔑 Using API key from:", connectedLLMNode?.data?.apiKey ? "LLM node" : 
+                       targetNode.data?.apiKey ? "Agent node" : "Environment variable");
+            
+            // Check if API key is available
+            if (!apiKey) {
+              showMessage('No API key found. Please configure the API key in the LLM node.', 'error', 4000);
+              continue; // Skip this agent and continue with others
+            }
+            
+            // Process message through Agent API
+            const result = await callAgentAPI({
+              userInput: message,
+              apiKey: apiKey,
+              agent: agent,
+              temperature: temperature,
+              modelName: agentModel,
+              tools: connectedTools
+            });
+            
+            if (result && result.response) {
               processedAgents++;
               
-              // Create response message
+              // Create response message (but don't send to chat node anymore)
               const responseMessage = {
                 id: Date.now() + Math.random(),
                 type: 'agent',
@@ -476,137 +558,66 @@ function Flow() {
                 agentId: targetNodeId
               };
 
-              // Send response back to chat node
-              setNodes((nds) => 
-                nds.map((node) => {
-                  if (node.id === sourceNodeId && node.type === 'chat') {
-                    return { 
-                      ...node, 
-                      data: { 
-                        ...node.data, 
-                        incomingMessage: responseMessage 
-                      } 
-                    };
-                  }
-                  return node;
-                })
+              // Send output to any connected output display nodes
+              const outputConnections = edges.filter(edge => 
+                edge.source === targetNodeId && edge.sourceHandle === 'agent-output'
               );
+              
+              if (outputConnections.length > 0) {
+                setNodes((nds) => 
+                  nds.map((node) => {
+                    // Check if this node is a target of any output connections
+                    const isOutputTarget = outputConnections.some(conn => conn.target === node.id);
+                    if (isOutputTarget && node.type === 'output') {
+                      return { 
+                        ...node, 
+                        data: { 
+                          ...node.data, 
+                          input: result.response,
+                          lastUpdated: new Date().toISOString()
+                        } 
+                      };
+                    }
+                    return node;
+                  })
+                );
+              }
 
               if (processedAgents === 1) {
                 showMessage(`Agent processed message successfully`, 'success', 2000);
               }
             } else {
-              // Handle error
-              const errorMessage = {
-                id: Date.now() + Math.random(),
-                type: 'system',
-                content: `Error processing message: ${result.error}`,
-                timestamp: new Date()
-              };
-
-              setNodes((nds) => 
-                nds.map((node) => {
-                  if (node.id === sourceNodeId && node.type === 'chat') {
-                    return { 
-                      ...node, 
-                      data: { 
-                        ...node.data, 
-                        incomingMessage: errorMessage 
-                      } 
-                    };
-                  }
-                  return node;
-                })
-              );
-
-              showMessage(`Agent error: ${result.error}`, 'error', 3000);
+              // Handle error - callAgentAPI doesn't return success/error format like processMessage
+              showMessage(`Agent error: No response received`, 'error', 3000);
             }
-          } else if (targetNode.data?.groqModel && !targetNode.data?.initialized) {
+          } else if (targetNode.data?.model && !targetNode.data?.initialized) {
             // Agent has LLM but is not initialized yet
-            const warningMessage = {
-              id: Date.now() + Math.random(),
-              type: 'system',
-              content: `Agent is still initializing. Please wait...`,
-              timestamp: new Date()
-            };
-
-            setNodes((nds) => 
-              nds.map((node) => {
-                if (node.id === sourceNodeId && node.type === 'chat') {
-                  return { 
-                    ...node, 
-                    data: { 
-                      ...node.data, 
-                      incomingMessage: warningMessage 
-                    } 
-                  };
-                }
-                return node;
-              })
-            );
-
             showMessage('Agent is still initializing', 'warning', 2000);
           } else {
             // Agent doesn't have an LLM connected or lost connection
-            const warningMessage = {
-              id: Date.now() + Math.random(),
-              type: 'system',
-              content: `Agent not ready: No LLM model connected`,
-              timestamp: new Date()
-            };
-
-            setNodes((nds) => 
-              nds.map((node) => {
-                if (node.id === sourceNodeId && node.type === 'chat') {
-                  return { 
-                    ...node, 
-                    data: { 
-                      ...node.data, 
-                      incomingMessage: warningMessage 
-                    } 
-                  };
-                }
-                return node;
-              })
-            );
-
             showMessage('Agent has no LLM model connected', 'warning', 2000);
           }
         } catch (error) {
           console.error("Error processing message:", error);
-          
-          const errorMessage = {
-            id: Date.now() + Math.random(),
-            type: 'system',
-            content: `Processing error: ${error.message}`,
-            timestamp: new Date()
-          };
-
-          setNodes((nds) => 
-            nds.map((node) => {
-              if (node.id === sourceNodeId && node.type === 'chat') {
-                return { 
-                  ...node, 
-                  data: { 
-                    ...node.data, 
-                    incomingMessage: errorMessage 
-                  } 
-                };
-              }
-              return node;
-            })
-          );
-
           showMessage(`Processing error: ${error.message}`, 'error', 3000);
         } finally {
-          // Remove processing state after 1 second
+          // Remove processing state after 1 second from both agent and connected LLM nodes
           setTimeout(() => {
+            const connectedLLMNodes = edges
+              .filter(edge => edge.target === targetNodeId && edge.targetHandle === 'model')
+              .map(edge => edge.source);
+            
             setNodes((nds) => 
-              nds.map((node) => 
-                node.id === targetNodeId 
-                  ? { ...node, data: { ...node.data, processing: false } }
-                  : node
-              )
+              nds.map((node) => {
+                if (node.id === targetNodeId) {
+                  // Remove processing from agent
+                  return { ...node, data: { ...node.data, processing: false } };
+                } else if (connectedLLMNodes.includes(node.id) && node.type === 'llm') {
+                  // Remove processing from connected LLM
+                  return { ...node, data: { ...node.data, processing: false } };
+                }
+                return node;
+              })
             );
           }, 1000);
         }

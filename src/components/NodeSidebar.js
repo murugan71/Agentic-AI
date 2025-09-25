@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getLanguageModels } from '../services/groqService.js';
+import { fetchGroqModels } from '../services/groqService.js';
 
 const NodeSidebar = () => {
   const [languageModels, setLanguageModels] = useState([]);
@@ -10,11 +10,142 @@ const NodeSidebar = () => {
     const loadModels = async () => {
       try {
         setIsLoadingModels(true);
-        const models = await getLanguageModels();
-        setLanguageModels(models);
+        const models = await fetchGroqModels();
+        
+        // Transform API models to sidebar format
+        const transformedModels = models.map(model => ({
+          type: 'llm',
+          icon: '🤖',
+          title: model.id || model.name || 'Unknown Model',
+          description: `${model.id || 'Groq Language Model'}`,
+          data: { 
+            label: model.id || model.name || 'Unknown Model', 
+            model: model.id || model.name, 
+            status: 'Available',
+            provider: 'Groq',
+            agent: 'groq'
+          }
+        }));
+
+        // Add GPT models to the list (Note: requires OpenAI API key and quota)
+        const gptModels = [
+          {
+            type: 'llm',
+            icon: '⚡',
+            title: 'GPT Models',
+            description: 'OpenAI GPT Models - Requires API quota',
+            data: { 
+              label: 'gpt-4o-mini', 
+              model: 'gpt-4o-mini', 
+              status: 'Available',
+              provider: 'OpenAI',
+              agent: 'openai',
+              contextWindow: 128000,
+              maxTokens: 16384
+            }
+          }
+        ];
+        
+        // Prioritize Groq models first, then add GPT models
+        setLanguageModels([...transformedModels, ...gptModels]);
       } catch (error) {
         console.error('Failed to load language models:', error);
-        // Fallback models will be used by the service
+        // Fallback models when API fails
+        const fallbackModels = [
+          {
+            type: 'llm',
+            icon: '🤖',
+            title: 'Mixtral 8x7B',
+            description: 'Mixtral 8x7B 32K context',
+            data: { 
+              label: 'Mixtral 8x7B', 
+              model: 'mixtral-8x7b-32768', 
+              status: 'Available',
+              provider: 'Groq',
+              agent: 'groq'
+            }
+          },
+          {
+            type: 'llm',
+            icon: '⚡',
+            title: 'Llama 3.1 70B',
+            description: 'Llama 3.1 70B Versatile',
+            data: { 
+              label: 'Llama 3.1 70B', 
+              model: 'llama-3.1-70b-versatile', 
+              status: 'Available',
+              provider: 'Groq',
+              agent: 'groq'
+            }
+          },
+          {
+            type: 'llm',
+            icon: '🚀',
+            title: 'Llama 3.1 8B',
+            description: 'Llama 3.1 8B Instant',
+            data: { 
+              label: 'Llama 3.1 8B', 
+              model: 'llama-3.1-8b-instant', 
+              status: 'Available',
+              provider: 'Groq',
+              agent: 'groq'
+            }
+          },
+          {
+            type: 'llm',
+            icon: '💬',
+            title: 'Gemma 2 9B',
+            description: 'Gemma 2 9B IT',
+            data: { 
+              label: 'Gemma 2 9B', 
+              model: 'gemma2-9b-it', 
+              status: 'Available',
+              provider: 'Groq',
+              agent: 'groq'
+            }
+          },
+          // Add GPT models as fallback too
+          {
+            type: 'llm',
+            icon: '🧠',
+            title: 'GPT-4o',
+            description: 'OpenAI GPT-4o - Most capable model',
+            data: { 
+              label: 'GPT-4o', 
+              model: 'gpt-4o', 
+              status: 'Available',
+              provider: 'OpenAI',
+              agent: 'openai'
+            }
+          },
+          {
+            type: 'llm',
+            icon: '⚡',
+            title: 'GPT-4o Mini',
+            description: 'OpenAI GPT-4o Mini - Fast and efficient',
+            data: { 
+              label: 'GPT-4o Mini', 
+              model: 'gpt-4o-mini', 
+              status: 'Available',
+              provider: 'OpenAI',
+              agent: 'openai'
+            }
+          },
+          {
+            type: 'llm',
+            icon: '💬',
+            title: 'GPT-3.5 Turbo',
+            description: 'OpenAI GPT-3.5 Turbo - Fast and cost-effective',
+            data: { 
+              label: 'GPT-3.5 Turbo', 
+              model: 'gpt-3.5-turbo', 
+              status: 'Available',
+              provider: 'OpenAI',
+              agent: 'openai'
+            }
+          }
+        ];
+        setLanguageModels(fallbackModels);
       } finally {
         setIsLoadingModels(false);
       }
@@ -46,45 +177,24 @@ const NodeSidebar = () => {
       items: [
         {
           type: 'tool',
-          icon: '🔍',
-          title: 'Web Search',
-          description: 'Search the web for information',
-          data: { label: 'Web Search', toolType: 'search', status: 'Ready' }
+          icon: '️',
+          title: 'PostgreSQL',
+          description: 'PostgreSQL database connection',
+          data: { label: 'PostgreSQL', toolType: 'database', status: 'Ready' }
         },
         {
           type: 'tool',
           icon: '📊',
-          title: 'Data Analysis',
-          description: 'Analyze and process data',
-          data: { label: 'Data Analysis', toolType: 'analysis', status: 'Ready' }
-        },
-        {
-          type: 'tool',
-          icon: '📝',
-          title: 'Text Processing',
-          description: 'Process and manipulate text',
-          data: { label: 'Text Processing', toolType: 'text', status: 'Ready' }
-        },
-        {
-          type: 'tool',
-          icon: '📷',
-          title: 'Image Processing',
-          description: 'Analyze and process images',
-          data: { label: 'Image Processing', toolType: 'image', status: 'Ready' }
+          title: 'AWS CloudWatch',
+          description: 'Monitor AWS resources and applications',
+          data: { label: 'AWS CloudWatch', toolType: 'monitoring', status: 'Ready' }
         },
         {
           type: 'tool',
           icon: '🔧',
-          title: 'API Tool',
-          description: 'Custom API integration',
-          data: { label: 'API Tool', toolType: 'api', status: 'Ready' }
-        },
-        {
-          type: 'tool',
-          icon: '📋',
-          title: 'File Handler',
-          description: 'Read and write files',
-          data: { label: 'File Handler', toolType: 'file', status: 'Ready' }
+          title: 'Azure DevOps',
+          description: 'Manage Azure DevOps projects and pipelines',
+          data: { label: 'Azure DevOps', toolType: 'devops', status: 'Ready' }
         }
       ]
     },
@@ -97,27 +207,6 @@ const NodeSidebar = () => {
           title: 'Vector Memory',
           description: 'Semantic vector storage',
           data: { label: 'Vector Memory', memoryType: 'vector', status: 'Ready' }
-        },
-        {
-          type: 'memory',
-          icon: '📚',
-          title: 'Episodic Memory',
-          description: 'Sequential episode storage',
-          data: { label: 'Episodic Memory', memoryType: 'episodic', status: 'Ready' }
-        },
-        {
-          type: 'memory',
-          icon: '💾',
-          title: 'Working Memory',
-          description: 'Short-term context storage',
-          data: { label: 'Working Memory', memoryType: 'working', status: 'Ready' }
-        },
-        {
-          type: 'memory',
-          icon: '🗂️',
-          title: 'Knowledge Base',
-          description: 'Structured knowledge storage',
-          data: { label: 'Knowledge Base', memoryType: 'knowledge', status: 'Ready' }
         }
       ]
     },
@@ -133,37 +222,28 @@ const NodeSidebar = () => {
               data: { label: 'Loading...', model: 'loading', status: 'Loading' }
             }
           ]
-        : languageModels
-    },
-    {
-      title: 'Data Sources',
-      items: [
-        {
-          type: 'database',
-          icon: '🗄️',
-          title: 'PostgreSQL',
-          description: 'PostgreSQL Database',
-          data: { label: 'PostgreSQL', type: 'PostgreSQL', status: 'Connected' }
-        },
-        {
-          type: 'database',
-          icon: '🗄️',
-          title: 'MongoDB',
-          description: 'MongoDB Database',
-          data: { label: 'MongoDB', type: 'MongoDB', status: 'Connected' }
-        },
-        {
-          type: 'database',
-          icon: '🗄️',
-          title: 'Redis',
-          description: 'Redis Cache',
-          data: { label: 'Redis', type: 'Redis', status: 'Connected' }
-        }
-      ]
+        : languageModels.length > 0 
+          ? languageModels
+          : [
+              {
+                type: 'llm',
+                icon: '❌',
+                title: 'No Models',
+                description: 'Failed to load models',
+                data: { label: 'No Models', model: 'none', status: 'Error' }
+              }
+            ]
     },
     {
       title: 'Communication',
       items: [
+        {
+          type: 'output',
+          icon: '📺',
+          title: 'Output Display',
+          description: 'View agent output and results',
+          data: { label: 'Output Display', type: 'output', status: 'Ready' }
+        },
         {
           type: 'chat',
           icon: '💬',
@@ -184,13 +264,6 @@ const NodeSidebar = () => {
           title: 'Teams',
           description: 'Microsoft Teams Channel',
           data: { label: 'Teams Channel', channel: 'General Channel', status: 'Connected' }
-        },
-        {
-          type: 'teams',
-          icon: '📱',
-          title: 'Slack',
-          description: 'Slack Workspace',
-          data: { label: 'Slack Channel', channel: 'General', status: 'Connected' }
         }
       ]
     }

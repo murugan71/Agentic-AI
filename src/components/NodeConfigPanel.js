@@ -11,6 +11,14 @@ const NodeConfigPanel = ({ node, onUpdate, onClose }) => {
     onUpdate(node.id, newConfig);
   };
 
+  const handleKeyDown = (e) => {
+    // Prevent keydown events from propagating to the parent Flow component
+    // This prevents accidental node deletion when typing in input fields
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.stopPropagation();
+    }
+  };
+
   const renderConfigFields = () => {
     switch (node.type) {
       case 'agent':
@@ -47,18 +55,35 @@ const NodeConfigPanel = ({ node, onUpdate, onClose }) => {
         );
       
       case 'llm':
+        // Check if this is a GPT Models node from OpenAI
+        const isGPTModelsNode = config.provider === 'OpenAI' && config.label === 'GPT Models';
+        
         return (
           <>
+            {/* Show Model Name dropdown only for GPT Models */}
+            {isGPTModelsNode && (
+              <div className="config-field">
+                <label>Model Name</label>
+                <select
+                  value={config.model || 'gpt-4o'}
+                  onChange={(e) => handleConfigChange('model', e.target.value)}
+                >
+                  <option value="gpt-4o">GPT-4o</option>
+                  <option value="gpt-4o-mini">GPT-4o Mini</option>
+                  <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                  <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                  <option value="gpt-4">GPT-4</option>
+                </select>
+              </div>
+            )}
             <div className="config-field">
-              <label>Model Name</label>
+              <label>Agent Provider</label>
               <select
-                value={config.model || 'gpt-4'}
-                onChange={(e) => handleConfigChange('model', e.target.value)}
+                value={config.agent || (isGPTModelsNode ? 'openai' : 'groq')}
+                onChange={(e) => handleConfigChange('agent', e.target.value)}
               >
-                <option value="gpt-4">GPT-4</option>
-                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                <option value="claude-3">Claude 3</option>
-                <option value="gemini-pro">Gemini Pro</option>
+                <option value="groq">Groq</option>
+                <option value="openai">OpenAI</option>
               </select>
             </div>
             <div className="config-field">
@@ -263,7 +288,7 @@ const NodeConfigPanel = ({ node, onUpdate, onClose }) => {
 
   return (
     <div className="config-panel-overlay" onClick={onClose}>
-      <div className="config-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="config-panel" onClick={(e) => e.stopPropagation()} onKeyDown={handleKeyDown}>
         <div className="config-header">
           <h3>Configure {node.type.charAt(0).toUpperCase() + node.type.slice(1)} Node</h3>
           <button className="close-btn" onClick={onClose}>×</button>

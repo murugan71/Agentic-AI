@@ -6,7 +6,7 @@ import { MemorySaver } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 import 'dotenv/config';
 
-async function runAgent() {
+async function runAgent(userInput) {
   const client = new MultiServerMCPClient({
     throwOnLoadError: true,
     prefixToolNameWithServerName: false,
@@ -87,10 +87,6 @@ async function runAgent() {
     enableStepTracing: true,
   });
 
-
-  // Compose explicit instructions to guide the agent
-  const userQueryRaw = "https://dev.azure.com/creditsafe/Compliance/_wiki/wikis/Compliance.wiki/13854/New-Starter-Access-Request-Details";
-
   const userQuery = `
     You are an AI assistant with access to these tools:
 
@@ -99,7 +95,7 @@ async function runAgent() {
 
     Task: Based on the user input below, decide which tool(s) to call to provide a concise, relevant summary.
 
-    User Input: ${userQueryRaw}
+    User Input: ${userInput}
 `.trim();
 
 

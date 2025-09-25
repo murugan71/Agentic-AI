@@ -12,12 +12,8 @@ const ChatNode = ({ data, isConnectable, id }) => {
   ]);
   const [inputValue, setInputValue] = useState('');
 
-  // Listen for incoming messages from agents
-  useEffect(() => {
-    if (data?.incomingMessage && data.incomingMessage.id !== messages[messages.length - 1]?.id) {
-      setMessages(prev => [...prev, data.incomingMessage]);
-    }
-  }, [data?.incomingMessage, messages]);
+  // Removed: No longer listening for incoming messages from agents
+  // All agent responses should go to Output Display nodes instead
 
   const sendMessage = () => {
     if (!inputValue.trim()) return;
@@ -39,7 +35,7 @@ const ChatNode = ({ data, isConnectable, id }) => {
       const systemMessage = {
         id: Date.now() + 1,
         type: 'system',
-        content: `Message sent to connected agent...`,
+        content: `Message sent to connected agent. Check Output Display for response.`,
         timestamp: new Date()
       };
       

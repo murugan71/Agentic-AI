@@ -12,7 +12,7 @@ export const isValidConnection = (source, target, sourceHandle, targetHandle, no
   if (sourceType === 'agent') {
     // Agent output can only connect to communication nodes
     if (sourceHandle === 'agent-output') {
-      return ['gmail', 'teams', 'chat'].includes(targetType);
+      return ['gmail', 'teams', 'chat', 'output'].includes(targetType);
     }
     return false; // Agents should not have other outgoing connections
   }
@@ -107,7 +107,7 @@ export const isValidConnection = (source, target, sourceHandle, targetHandle, no
     chat: ['agent'],
     
     // Agents can only connect to communication nodes via agent-output
-    agent: ['gmail', 'teams', 'chat'],
+    agent: ['gmail', 'teams', 'chat', 'output'],
   };
 
   // Check if connection is allowed for non-agent targets
@@ -126,8 +126,8 @@ export const getConnectionMessage = (source, target, sourceHandle, targetHandle,
 
   // Handle agent output connection messages
   if (sourceType === 'agent' && sourceHandle === 'agent-output') {
-    if (!['gmail', 'teams', 'chat'].includes(targetType)) {
-      return 'Agent output can only connect to communication nodes (Gmail, Teams, or Chat)';
+    if (!['gmail', 'teams', 'chat', 'output'].includes(targetType)) {
+      return 'Agent output can only connect to communication nodes (Gmail, Teams, Chat, or Output Display)';
     }
   }
 
@@ -174,6 +174,19 @@ export const getConnectionMessage = (source, target, sourceHandle, targetHandle,
       if (!['gmail', 'teams', 'chat'].includes(sourceType)) {
         return 'Agent input can only accept connections from communication nodes (Gmail, Teams, or Chat)';
       }
+    }
+  }
+
+  // Output node validation - only accepts connections from agents
+  if (targetType === 'output') {
+    if (sourceType !== 'agent') {
+      return 'Output Display can only accept connections from agents';
+    }
+    if (sourceHandle !== 'agent-output') {
+      return 'Output Display must connect to agent output handle';
+    }
+    if (targetHandle !== 'input') {
+      return 'Output Display input must be connected via the left handle';
     }
   }
 
@@ -230,7 +243,7 @@ export const nodeCategories = {
   core: ['agent'],
   ai: ['llm'],
   data: ['database'],
-  communication: ['gmail', 'teams', 'chat'],
+  communication: ['gmail', 'teams', 'chat', 'output'],
   tools: ['tool'],
   memory: ['memory']
 };
